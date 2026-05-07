@@ -12,6 +12,8 @@ import {
   PlayCircle,
   Plus,
   Smartphone,
+  XCircle,
+  Bug,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,7 +21,13 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { getNfcSupport, normalizeUid, scanOnce } from "@/lib/nfc";
+import {
+  getNfcSupport,
+  normalizeUid,
+  startScan,
+  type ScanController,
+  type ScanRecord,
+} from "@/lib/nfc";
 import { cardRepository, settingsRepository } from "@/lib/storage";
 import type { NfcCard } from "@/lib/types";
 import { runAction } from "@/lib/actions";
@@ -28,8 +36,10 @@ import { formatDate, shortUid } from "@/lib/utils";
 type ScanState =
   | { kind: "idle" }
   | { kind: "scanning" }
-  | { kind: "done"; uid: string; match: NfcCard | null }
+  | { kind: "done"; uid: string; records: ScanRecord[]; match: NfcCard | null }
   | { kind: "error"; message: string };
+
+type LogEntry = { ts: string; level: "info" | "warn" | "error"; msg: string };
 
 export default function ScanPage() {
   const router = useRouter();
@@ -37,22 +47,49 @@ export default function ScanPage() {
   const [state, setState] = React.useState<ScanState>({ kind: "idle" });
   const [manualUid, setManualUid] = React.useState("");
   const [autoExecute, setAutoExecute] = React.useState(false);
+  const [log, setLog] = React.useState<LogEntry[]>([]);
+  const [showLog, setShowLog] = React.useState(false);
+  const controllerRef = React.useRef<ScanController | null>(null);
   const support = React.useMemo(() => getNfcSupport(), []);
 
   React.useEffect(() => {
     settingsRepository.get().then((s) => setAutoExecute(s.autoExecute));
   }, []);
 
-  async function handleUid(rawUid: string) {
+  React.useEffect(() => {
+    return () => controllerRef.current?.cancel();
+  }, []);
+
+  function appendLog(level: LogEntry["level"], msg: string) {
+    setLog((prev) =>
+      [
+        ...prev,
+        { ts: new Date().toLocaleTimeString(), level, msg },
+      ].slice(-30),
+    );
+  }
+
+  async function handleUid(rawUid: string, records: ScanRecord[] = []) {
     const uid = normalizeUid(rawUid);
     if (!uid) {
-      setState({ kind: "error", message: "Lege UID." });
+      appendLog("warn", "Lege UID ontvangen");
+      setState({
+        kind: "error",
+        message:
+          "Lege UID ontvangen. Probeer opnieuw of gebruik handmatige invoer.",
+      });
       return;
     }
+    appendLog("info", `UID: ${uid}`);
     const match = await cardRepository.findByUid(uid);
     if (match) {
       const updated = await cardRepository.recordScan(uid);
-      setState({ kind: "done", uid, match: updated ?? match });
+      setState({
+        kind: "done",
+        uid,
+        records,
+        match: updated ?? match,
+      });
       if (autoExecute && updated) {
         const result = await runAction(updated);
         push({
@@ -62,25 +99,50 @@ export default function ScanPage() {
         });
       }
     } else {
-      setState({ kind: "done", uid, match: null });
+      setState({ kind: "done", uid, records, match: null });
     }
   }
 
-  async function startScan() {
+  async function startNfcScan() {
     if (!support.supported) return;
+    setLog([]);
+    appendLog("info", "Scan starten…");
     setState({ kind: "scanning" });
+    const ctrl = startScan({
+      onReadingError: () =>
+        appendLog(
+          "warn",
+          "readingerror — tag onleesbaar of nog niet NDEF-geformatteerd; wacht op volgend signaal",
+        ),
+    });
+    controllerRef.current = ctrl;
     try {
-      const result = await scanOnce();
-      await handleUid(result.uid);
+      const res = await ctrl.result;
+      appendLog(
+        "info",
+        `reading event ontvangen (${res.records.length} records)`,
+      );
+      await handleUid(res.uid, res.records);
     } catch (err) {
-      setState({
-        kind: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
+      const msg = err instanceof Error ? err.message : String(err);
+      if (err instanceof Error && err.name === "AbortError") {
+        appendLog("info", "Scan geannuleerd");
+        setState({ kind: "idle" });
+        return;
+      }
+      appendLog("error", msg);
+      setState({ kind: "error", message: msg });
+    } finally {
+      controllerRef.current = null;
     }
+  }
+
+  function cancelScan() {
+    controllerRef.current?.cancel();
   }
 
   function reset() {
+    controllerRef.current?.cancel();
     setState({ kind: "idle" });
     setManualUid("");
   }
@@ -104,12 +166,7 @@ export default function ScanPage() {
             <p className="font-semibold">Web NFC niet beschikbaar</p>
             <p className="mt-0.5 text-amber-800">{support.reason}</p>
             <p className="mt-2 text-amber-800">
-              Je kunt nog steeds handmatig een UID invoeren of een desktop
-              NFC-reader koppelen via de helper-API. Zie{" "}
-              <Link className="underline" href="/settings">
-                Instellingen
-              </Link>
-              .
+              Je kunt nog steeds handmatig een UID invoeren.
             </p>
           </div>
         </div>
@@ -127,6 +184,8 @@ export default function ScanPage() {
                   <Loader2 className="h-9 w-9 animate-spin" />
                 ) : state.kind === "done" && state.match ? (
                   <CheckCircle2 className="h-9 w-9 text-emerald-600" />
+                ) : state.kind === "done" && !state.match ? (
+                  <CreditCard className="h-9 w-9 text-amber-600" />
                 ) : state.kind === "error" ? (
                   <AlertTriangle className="h-9 w-9 text-red-600" />
                 ) : (
@@ -141,12 +200,11 @@ export default function ScanPage() {
                 <p className="max-w-md text-sm text-muted-foreground">
                   Druk op de knop hieronder en houd vervolgens een NTAG213,
                   NTAG215 of NTAG216 kaart bij de achterkant van je telefoon.
+                  Geef toestemming als Chrome erom vraagt.
                 </p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                  <Button onClick={startScan} disabled={!support.supported}>
-                    <ScanLine className="h-4 w-4" /> Start NFC-scan
-                  </Button>
-                </div>
+                <Button onClick={startNfcScan} disabled={!support.supported}>
+                  <ScanLine className="h-4 w-4" /> Start NFC-scan
+                </Button>
               </>
             ) : null}
 
@@ -154,9 +212,12 @@ export default function ScanPage() {
               <>
                 <h2 className="text-lg font-semibold">Scannen…</h2>
                 <p className="max-w-md text-sm text-muted-foreground">
-                  Houd de kaart stil bij het apparaat. Annuleer de prompt om
-                  opnieuw te beginnen.
+                  Houd de kaart stil tegen de bovenrand of achterkant van je
+                  telefoon. Soms duurt het 1-2 seconden.
                 </p>
+                <Button variant="outline" onClick={cancelScan}>
+                  <XCircle className="h-4 w-4" /> Annuleren
+                </Button>
               </>
             ) : null}
 
@@ -168,9 +229,12 @@ export default function ScanPage() {
                 <p className="max-w-md text-sm text-muted-foreground">
                   {state.message}
                 </p>
-                <Button variant="outline" onClick={reset}>
-                  Opnieuw
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={startNfcScan}>Opnieuw proberen</Button>
+                  <Button variant="outline" onClick={reset}>
+                    Reset
+                  </Button>
+                </div>
               </>
             ) : null}
 
@@ -180,6 +244,11 @@ export default function ScanPage() {
                   UID:{" "}
                   <span className="font-mono">{shortUid(state.uid)}</span>
                 </h2>
+                {state.records.length > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {state.records.length} NDEF-record(s) gelezen
+                  </p>
+                ) : null}
                 {state.match ? (
                   <ScanMatch
                     card={state.match}
@@ -207,7 +276,7 @@ export default function ScanPage() {
                       >
                         <Plus className="h-4 w-4" /> Registreer deze kaart
                       </Button>
-                      <Button variant="outline" onClick={reset}>
+                      <Button variant="outline" onClick={startNfcScan}>
                         Opnieuw scannen
                       </Button>
                     </div>
@@ -218,40 +287,85 @@ export default function ScanPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <div>
-              <h3 className="text-sm font-semibold">Handmatige UID</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Gebruik dit als Web NFC niet beschikbaar is, of als je een
-                desktop-reader gebruikt.
-              </p>
-            </div>
-            <Input
-              value={manualUid}
-              onChange={(e) => setManualUid(e.target.value)}
-              placeholder="04:A2:1B:C9:7E:80"
-              className="font-mono"
-            />
-            <Button
-              className="w-full"
-              onClick={() => handleUid(manualUid)}
-              disabled={!manualUid.trim()}
-            >
-              <PlayCircle className="h-4 w-4" /> Verwerken
-            </Button>
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="space-y-4 p-5">
+              <div>
+                <h3 className="text-sm font-semibold">Handmatige UID</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Gebruik dit als de scan niet werkt of op desktop.
+                </p>
+              </div>
+              <Input
+                value={manualUid}
+                onChange={(e) => setManualUid(e.target.value)}
+                placeholder="04:A2:1B:C9:7E:80"
+                className="font-mono"
+              />
+              <Button
+                className="w-full"
+                onClick={() => handleUid(manualUid)}
+                disabled={!manualUid.trim()}
+              >
+                <PlayCircle className="h-4 w-4" /> Verwerken
+              </Button>
 
-            <div className="rounded-lg bg-slate-50 p-3 text-xs text-muted-foreground">
-              <p className="flex items-center gap-1.5 font-medium text-foreground">
-                <Smartphone className="h-3.5 w-3.5" /> Tip
-              </p>
-              <p className="mt-1">
-                Op desktop kun je de UID overtypen die je leest met een
-                NFC-reader-app. Zelf hosten? Voeg dan een eigen API toe.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="rounded-lg bg-slate-50 p-3 text-xs text-muted-foreground">
+                <p className="flex items-center gap-1.5 font-medium text-foreground">
+                  <Smartphone className="h-3.5 w-3.5" /> Tip
+                </p>
+                <p className="mt-1">
+                  Werkt scannen niet? Open Chrome op Android, geef NFC-permissie
+                  als die wordt gevraagd, en houd de kaart bij de bovenkant van
+                  het toestel (waar de NFC-antenne zit).
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <button
+                className="flex w-full items-center justify-between text-left"
+                onClick={() => setShowLog((v) => !v)}
+              >
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                  <Bug className="h-4 w-4" /> Scan-log ({log.length})
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {showLog ? "verbergen" : "tonen"}
+                </span>
+              </button>
+              {showLog ? (
+                <div className="mt-3 max-h-56 overflow-y-auto rounded-lg bg-slate-900 p-3 font-mono text-[11px] leading-relaxed text-slate-100">
+                  {log.length === 0 ? (
+                    <p className="text-slate-400">
+                      Nog geen scans. Druk op &quot;Start NFC-scan&quot;.
+                    </p>
+                  ) : (
+                    log.map((l, i) => (
+                      <div key={i}>
+                        <span className="text-slate-500">{l.ts}</span>{" "}
+                        <span
+                          className={
+                            l.level === "error"
+                              ? "text-red-400"
+                              : l.level === "warn"
+                                ? "text-amber-300"
+                                : "text-emerald-300"
+                          }
+                        >
+                          [{l.level}]
+                        </span>{" "}
+                        {l.msg}
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
   );

@@ -16,7 +16,7 @@ export function getNfcSupport(): NfcSupport {
       return {
         supported: false,
         reason:
-          "Web NFC werkt alleen op Android met Chrome. Op desktop kun je de helper-API of handmatige UID-invoer gebruiken.",
+          "Web NFC werkt alleen op Android met Chrome. Op desktop kun je de UID handmatig invoeren.",
       };
     }
     if (!isChrome) {
@@ -41,10 +41,14 @@ export function getNfcSupport(): NfcSupport {
   return { supported: true };
 }
 
+export interface ScanRecord {
+  type: string;
+  data: string;
+}
+
 export interface ScanResult {
   uid: string;
-  records: { type: string; data: string }[];
-  raw: unknown;
+  records: ScanRecord[];
 }
 
 interface NDEFReadingEventLike {
@@ -61,45 +65,106 @@ interface NDEFReaderLike {
   addEventListener(type: "readingerror", listener: (e: Event) => void): void;
 }
 
-export async function scanOnce(signal?: AbortSignal): Promise<ScanResult> {
+export interface ScanController {
+  /** Resolves with the first successful read. */
+  result: Promise<ScanResult>;
+  /** Cancels the scan. Causes `result` to reject with AbortError. */
+  cancel: () => void;
+  /** Fired for every reading-error event (e.g. blank/unformatted tag). */
+  onReadingError?: (event: Event) => void;
+}
+
+/**
+ * Start an NFC scan. Listeners are attached BEFORE `scan()` is awaited so we
+ * never miss the very first `reading` event. Reading errors no longer cause
+ * the promise to reject — many blank NTAG tags fire `readingerror` first and
+ * then a real `reading` event with a valid serialNumber.
+ */
+export function startScan(opts?: {
+  onReadingError?: (event: Event) => void;
+}): ScanController {
   const support = getNfcSupport();
-  if (!support.supported) throw new Error(support.reason);
+  if (!support.supported) {
+    return {
+      result: Promise.reject(new Error(support.reason)),
+      cancel: () => {},
+    };
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Ctor = (window as any).NDEFReader as new () => NDEFReaderLike;
   const reader = new Ctor();
-  await reader.scan({ signal });
+  const ac = new AbortController();
+  let settled = false;
 
-  return new Promise<ScanResult>((resolve, reject) => {
-    const onError = () => reject(new Error("Lezen van NFC-tag mislukt."));
-    reader.addEventListener("readingerror", onError);
+  const result = new Promise<ScanResult>((resolve, reject) => {
+    const cleanup = () => {
+      settled = true;
+    };
+
     reader.addEventListener("reading", (event) => {
-      const records: { type: string; data: string }[] = [];
+      if (settled) return;
+      const decoder = new TextDecoder();
+      const records: ScanRecord[] = [];
       try {
-        const decoder = new TextDecoder();
         for (const r of event.message.records) {
-          if (r.data) {
-            records.push({
-              type: r.recordType,
-              data: decoder.decode(r.data),
-            });
-          } else {
-            records.push({ type: r.recordType, data: "" });
-          }
+          records.push({
+            type: r.recordType,
+            data: r.data ? decoder.decode(r.data) : "",
+          });
         }
       } catch {
-        // ignore decode errors, UID still useful
+        // ignore decode errors, UID alone is still useful
       }
-      resolve({
-        uid: event.serialNumber,
-        records,
-        raw: event,
-      });
+      cleanup();
+      ac.abort();
+      resolve({ uid: event.serialNumber ?? "", records });
     });
+
+    reader.addEventListener("readingerror", (e) => {
+      // Don't reject — a readingerror often precedes a successful reading
+      // for blank/unformatted NTAG tags. Surface it via callback for UI.
+      opts?.onReadingError?.(e);
+    });
+
+    ac.signal.addEventListener("abort", () => {
+      if (settled) return;
+      cleanup();
+      reject(
+        Object.assign(new Error("Scan geannuleerd"), { name: "AbortError" }),
+      );
+    });
+
+    reader
+      .scan({ signal: ac.signal })
+      .catch((err: unknown) => {
+        if (settled) return;
+        cleanup();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
   });
+
+  return {
+    result,
+    cancel: () => ac.abort(),
+  };
 }
 
-export function normalizeUid(value: string) {
+/**
+ * Convenience wrapper: scan once and resolve with the first read.
+ */
+export async function scanOnce(signal?: AbortSignal): Promise<ScanResult> {
+  const ctrl = startScan();
+  if (signal) {
+    const onAbort = () => ctrl.cancel();
+    if (signal.aborted) ctrl.cancel();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
+  return ctrl.result;
+}
+
+export function normalizeUid(value: string | undefined | null) {
+  if (!value) return "";
   return value
     .replace(/\s+/g, "")
     .replace(/[^A-Za-z0-9:\-]/g, "")
