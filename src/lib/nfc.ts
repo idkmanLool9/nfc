@@ -170,3 +170,86 @@ export function normalizeUid(value: string | undefined | null) {
     .replace(/[^A-Za-z0-9:\-]/g, "")
     .toUpperCase();
 }
+
+// ---------- Writing ----------
+
+export interface NdefRecordSpec {
+  recordType: string;
+  data?: string | BufferSource;
+  mediaType?: string;
+  encoding?: string;
+  lang?: string;
+}
+
+interface NDEFWriterLike {
+  write(
+    message: { records: NdefRecordSpec[] } | string,
+    options?: { signal?: AbortSignal; overwrite?: boolean },
+  ): Promise<void>;
+}
+
+/**
+ * Write NDEF records onto a tag. Web NFC presents a system prompt and waits
+ * for the user to bring a tag close. Capacity differs per chip:
+ * NTAG213 ~144 B, NTAG215 ~504 B, NTAG216 ~888 B (all NDEF + framing).
+ */
+export async function writeToTag(
+  records: NdefRecordSpec[],
+  opts?: { signal?: AbortSignal; overwrite?: boolean },
+) {
+  const support = getNfcSupport();
+  if (!support.supported) throw new Error(support.reason);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Ctor = (window as any).NDEFReader as new () => NDEFWriterLike;
+  const writer = new Ctor();
+  await writer.write(
+    { records },
+    { signal: opts?.signal, overwrite: opts?.overwrite ?? true },
+  );
+}
+
+import type { ActionType } from "./types";
+
+/** Whether tapping the written tag will trigger the action without our webapp. */
+export function isStandaloneAction(type: ActionType): boolean {
+  return (
+    type === "open_link" ||
+    type === "open_file" ||
+    type === "open_profile" ||
+    type === "show_text"
+  );
+}
+
+export function buildRecordsForAction(
+  actionType: ActionType,
+  actionValue: string,
+  fallbackUrl?: string,
+): NdefRecordSpec[] {
+  switch (actionType) {
+    case "open_link":
+    case "open_file":
+    case "open_profile":
+      return [{ recordType: "url", data: actionValue }];
+    case "show_text":
+      return [
+        { recordType: "text", data: actionValue, lang: "nl", encoding: "utf-8" },
+      ];
+    case "webhook":
+    case "check_in":
+    case "custom":
+      // These need our webapp to execute. Write a URL pointing back to the
+      // scan page so tapping the tag at least re-opens the app.
+      if (fallbackUrl) {
+        return [{ recordType: "url", data: fallbackUrl }];
+      }
+      return [
+        {
+          recordType: "text",
+          data: actionValue || actionType,
+          lang: "nl",
+          encoding: "utf-8",
+        },
+      ];
+  }
+}
+

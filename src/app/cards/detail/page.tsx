@@ -22,6 +22,8 @@ import { cardRepository } from "@/lib/storage";
 import { ACTION_LABELS, type NfcCard } from "@/lib/types";
 import { formatDate, shortUid } from "@/lib/utils";
 import { runAction } from "@/lib/actions";
+import { isStandaloneAction } from "@/lib/nfc";
+import { WriteToTagButton } from "@/components/write-to-tag";
 
 function CardDetailInner() {
   const params = useSearchParams();
@@ -80,6 +82,7 @@ function CardDetailInner() {
         description={`Geregistreerd op ${formatDate(card.createdAt)}`}
         actions={
           <>
+            <WriteToTagButton card={card} />
             <Button
               variant="outline"
               onClick={async () => {
@@ -114,6 +117,46 @@ function CardDetailInner() {
           </>
         }
       />
+
+      <div
+        className={
+          "mb-4 flex items-start gap-3 rounded-xl border p-4 text-sm " +
+          (isStandaloneAction(card.actionType)
+            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+            : "border-amber-200 bg-amber-50 text-amber-900")
+        }
+      >
+        <div className="mt-0.5 text-lg">
+          {isStandaloneAction(card.actionType) ? "📱" : "ℹ️"}
+        </div>
+        <div className="min-w-0">
+          {isStandaloneAction(card.actionType) ? (
+            <>
+              <p className="font-semibold">
+                Werkt standalone op je telefoon
+              </p>
+              <p className="mt-0.5">
+                Schrijf de actie naar de NFC-kaart met de knop{" "}
+                <span className="font-semibold">&quot;Schrijf naar kaart&quot;</span>.
+                Daarna opent je telefoon de actie automatisch zodra je de kaart
+                tegen je toestel houdt — zonder dat de webapp open hoeft te
+                staan.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold">
+                Webapp nodig om uit te voeren
+              </p>
+              <p className="mt-0.5">
+                {ACTION_LABELS[card.actionType]} kan niet zelfstandig door een
+                telefoon worden uitgevoerd. Open de webapp en scan de kaart om
+                deze actie te triggeren.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>

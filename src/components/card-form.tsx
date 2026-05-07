@@ -14,7 +14,12 @@ import {
   type NewCardInput,
   type NfcType,
 } from "@/lib/types";
-import { getNfcSupport, normalizeUid, scanOnce } from "@/lib/nfc";
+import {
+  getNfcSupport,
+  isStandaloneAction,
+  normalizeUid,
+  scanOnce,
+} from "@/lib/nfc";
 import { useToast } from "@/components/ui/toast";
 
 type Errors = Partial<Record<keyof NewCardInput, string>>;
@@ -209,6 +214,29 @@ export function CardForm({
               <p className="mt-1 text-xs text-red-600">{errors.actionValue}</p>
             ) : null}
           </div>
+          <div
+            className={
+              "md:col-span-2 rounded-lg border p-3 text-xs " +
+              (isStandaloneAction(actionType)
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-amber-200 bg-amber-50 text-amber-900")
+            }
+          >
+            {isStandaloneAction(actionType) ? (
+              <>
+                <span className="font-semibold">📱 Werkt standalone:</span> na
+                opslaan kun je deze actie naar de kaart schrijven; tappen op
+                je telefoon opent de actie automatisch zonder de webapp.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">ℹ️ Webapp nodig:</span> deze
+                actie kan niet zelfstandig door je telefoon worden uitgevoerd.
+                Tap de kaart in deze webapp om hem te triggeren.
+              </>
+            )}
+          </div>
+
           <div className="md:col-span-2">
             <label className="fms-label">Notities</label>
             <Textarea
