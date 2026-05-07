@@ -1,5 +1,7 @@
 "use client";
 
+import { getPlatform } from "./platform";
+
 export type NfcSupport =
   | { supported: true; reason?: undefined }
   | { supported: false; reason: string };
@@ -8,7 +10,22 @@ export function getNfcSupport(): NfcSupport {
   if (typeof window === "undefined") {
     return { supported: false, reason: "Server context" };
   }
+  const platform = getPlatform();
   if (!("NDEFReader" in window)) {
+    if (platform === "capacitor-android") {
+      return {
+        supported: false,
+        reason:
+          "NFC niet beschikbaar in deze Android-app. Controleer dat NFC aan staat op je toestel en dat de app de NFC-permissie heeft (AndroidManifest).",
+      };
+    }
+    if (platform === "capacitor-ios") {
+      return {
+        supported: false,
+        reason:
+          "iOS ondersteunt Web NFC niet. Voeg een native Core NFC-plugin toe of gebruik handmatige UID-invoer.",
+      };
+    }
     const ua = navigator.userAgent;
     const isAndroid = /Android/i.test(ua);
     const isChrome = /Chrome|Chromium/i.test(ua) && !/Edg|OPR/i.test(ua);

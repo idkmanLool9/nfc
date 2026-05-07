@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cap:build": "cross-env NEXT_PUBLIC_BASE_PATH= NEXT_PUBLIC_TARGET=capacitor next build",
+    "cap:sync": "npm run cap:build && cap sync",
+    "cap:open:android": "cap open android",
+    "cap:run:android": "npm run cap:sync && cap run android"
   },
   "dependencies": {
     "next": "14.2.5",
@@ -17,7 +21,9 @@
     "tailwind-merge": "^2.4.0",
     "class-variance-authority": "^0.7.0",
     "lucide-react": "^0.408.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^6.1.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
@@ -29,6 +35,8 @@
     "typescript": "^5.5.3",
     "tailwindcss-animate": "^1.0.7",
     "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.5"
+    "eslint-config-next": "14.2.5",
+    "cross-env": "^7.0.3",
+    "@capacitor/cli": "^6.1.2"
   }
 }

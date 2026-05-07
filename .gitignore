@@ -6,3 +6,16 @@ build
 .env*.local
 *.tsbuildinfo
 next-env.d.ts
+
+# Capacitor build artifacts (the ios/ and android/ directories themselves
+# should be committed once generated, but their build outputs should not).
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+ios/build/
+ios/Pods/
+ios/App/build/
+ios/.xcode.env.local
