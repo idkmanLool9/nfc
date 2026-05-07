@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Download, Upload, Trash2, Smartphone } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -182,9 +183,14 @@ export default function SettingsPage() {
                 </Button>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Een kleine helper-app (bv. een Node/Electron of Python-tool met
-                een PC/SC NFC-reader) kan UIDs naar deze webapp sturen via{" "}
-                <span className="font-mono">/api/nfc/scan</span>.
+                Op een eigen server kun je een kleine helper-app (bv. Node of
+                Python met een PC/SC NFC-reader) gebruiken om UIDs naar deze
+                webapp te sturen. Op GitHub Pages werkt geen server, gebruik
+                dan handmatige UID-invoer op{" "}
+                <Link className="underline" href="/scan">
+                  /scan
+                </Link>
+                .
               </p>
             </div>
           </CardContent>

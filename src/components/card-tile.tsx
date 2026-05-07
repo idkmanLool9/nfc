@@ -29,7 +29,7 @@ export function CardTile({ card }: { card: NfcCard }) {
   const Icon = ICONS[card.actionType] ?? CreditCard;
   return (
     <Link
-      href={`/cards/${card.id}`}
+      href={`/cards/detail?id=${card.id}`}
       className="group block rounded-2xl border border-border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">

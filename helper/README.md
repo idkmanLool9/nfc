@@ -1,8 +1,11 @@
-# Desktop NFC helper (optioneel)
+# Desktop NFC helper (optioneel, alleen self-hosted)
 
 Web NFC werkt alleen op Android Chrome. Op een desktop kun je een fysieke
 NFC-reader (bv. ACR122U via PC/SC of een libnfc-compatible reader) gebruiken
 en UIDs doorsturen naar de webapp.
+
+> Werkt **alleen** als je deze app zelf host (Vercel, eigen server, …).
+> Op GitHub Pages is er geen server, dus daar geen API endpoint.
 
 ## Endpoint
 

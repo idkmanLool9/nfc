@@ -106,7 +106,7 @@ export default function ActionsPage() {
                     {list.slice(0, 3).map((c) => (
                       <Link
                         key={c.id}
-                        href={`/cards/${c.id}`}
+                        href={`/cards/detail?id=${c.id}`}
                         className="flex items-center justify-between rounded-lg border border-border bg-white p-2 text-sm hover:border-brand-200"
                       >
                         <span className="truncate">{c.name}</span>

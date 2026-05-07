@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import * as React from "react";
 import {
@@ -22,16 +23,21 @@ import { ACTION_LABELS, type NfcCard } from "@/lib/types";
 import { formatDate, shortUid } from "@/lib/utils";
 import { runAction } from "@/lib/actions";
 
-export default function CardDetailPage() {
-  const params = useParams<{ id: string }>();
+function CardDetailInner() {
+  const params = useSearchParams();
+  const id = params.get("id") ?? "";
   const router = useRouter();
   const { push } = useToast();
 
   const [card, setCard] = React.useState<NfcCard | null | undefined>(undefined);
 
   React.useEffect(() => {
-    cardRepository.get(params.id).then(setCard);
-  }, [params.id]);
+    if (!id) {
+      setCard(null);
+      return;
+    }
+    cardRepository.get(id).then(setCard);
+  }, [id]);
 
   if (card === undefined) {
     return (
@@ -49,7 +55,10 @@ export default function CardDetailPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Deze kaart bestaat niet (meer) op dit apparaat.
         </p>
-        <Link href="/cards" className={buttonVariants({ variant: "outline" }) + " mt-4"}>
+        <Link
+          href="/cards"
+          className={buttonVariants({ variant: "outline" }) + " mt-4"}
+        >
           Terug naar overzicht
         </Link>
       </div>
@@ -96,10 +105,7 @@ export default function CardDetailPage() {
               onClick={async () => {
                 if (!window.confirm(`"${card.name}" verwijderen?`)) return;
                 await cardRepository.remove(card.id);
-                push({
-                  title: "Kaart verwijderd",
-                  variant: "success",
-                });
+                push({ title: "Kaart verwijderd", variant: "success" });
                 router.push("/cards");
               }}
             >
@@ -168,10 +174,7 @@ export default function CardDetailPage() {
           onSubmit={async (data) => {
             const updated = await cardRepository.update(card.id, data);
             setCard(updated);
-            push({
-              title: "Wijzigingen opgeslagen",
-              variant: "success",
-            });
+            push({ title: "Wijzigingen opgeslagen", variant: "success" });
           }}
         />
       </div>
@@ -188,5 +191,13 @@ export default function CardDetailPage() {
         </p>
       ) : null}
     </>
+  );
+}
+
+export default function CardDetailPage() {
+  return (
+    <Suspense fallback={<div className="skeleton-bar w-1/3" />}>
+      <CardDetailInner />
+    </Suspense>
   );
 }

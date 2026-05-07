@@ -246,9 +246,8 @@ export default function ScanPage() {
                 <Smartphone className="h-3.5 w-3.5" /> Tip
               </p>
               <p className="mt-1">
-                Een desktop NFC-reader kan UIDs sturen naar{" "}
-                <span className="font-mono">/api/nfc/scan</span>. Zie de
-                instellingen voor een endpoint-voorbeeld.
+                Op desktop kun je de UID overtypen die je leest met een
+                NFC-reader-app. Zelf hosten? Voeg dan een eigen API toe.
               </p>
             </div>
           </CardContent>
@@ -286,7 +285,7 @@ function ScanMatch({
           <PlayCircle className="h-4 w-4" /> Voer actie uit
         </Button>
         <Link
-          href={`/cards/${card.id}`}
+          href={`/cards/detail?id=${card.id}`}
           className={buttonVariants({ variant: "outline" }) + " flex-1"}
         >
           Open kaart

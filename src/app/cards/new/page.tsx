@@ -45,7 +45,7 @@ function NewCardInner() {
           description: `${created.name} is toegevoegd.`,
           variant: "success",
         });
-        router.push(`/cards/${created.id}`);
+        router.push(`/cards/detail?id=${created.id}`);
       }}
     />
   );

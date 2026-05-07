@@ -63,6 +63,24 @@ npm run dev
 # open http://localhost:3000
 ```
 
+## Deploy naar GitHub Pages
+
+1. Push naar GitHub.
+2. Ga naar **Settings → Pages → Build and deployment** en kies **Source: GitHub Actions**.
+3. De workflow in `.github/workflows/deploy.yml` bouwt een statische export
+   en publiceert deze automatisch. De site komt op
+   `https://<user>.github.io/<repo>/`.
+
+De `basePath` wordt automatisch op de repo-naam gezet via de
+`NEXT_PUBLIC_BASE_PATH` env-variabele die de workflow invult.
+
+Web NFC werkt op GitHub Pages omdat het over HTTPS draait — open de
+gepubliceerde URL op een Android-telefoon in Chrome om kaarten te scannen.
+
+API routes (`/api/*`) en dynamische routes worden **niet** geëxporteerd omdat
+GitHub Pages alleen statische bestanden serveert. Voor de helper-API kun je
+zelf hosten op Vercel/Render/etc.
+
 ## Toekomstige backend
 
 De UI praat alleen met `cardRepository` (`src/lib/storage.ts`). Vervang de
